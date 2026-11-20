@@ -8,12 +8,16 @@ from app.config import Config
 from app.db import init_db
 from app.services.errors import ServiceError
 from app.services.windows import (
+    arm_failure,
     coverage_report,
     list_coverage,
     list_slices,
     list_windows,
     plan_slices,
     replay_slice,
+    replay_window,
+    resume_window,
+    window_detail,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -134,6 +138,50 @@ class ApiSlices:
             _json(resp, {"error": exc.message}, exc.status_code)
 
 
+class ApiWindowDetail:
+    async def on_get(self, req, resp, window_id):
+        try:
+            require_user(req)
+            _json(resp, {"detail": window_detail(int(window_id))})
+        except ServiceError as exc:
+            _json(resp, {"error": exc.message}, exc.status_code)
+
+
+class ApiWindowReplay:
+    async def on_post(self, req, resp, window_id):
+        try:
+            require_user(req)
+            body = await req.get_media() or {}
+            holder = str(body.get("holder") or "仓管")
+            _json(resp, {"detail": replay_window(int(window_id), holder=holder)})
+        except ServiceError as exc:
+            _json(resp, {"error": exc.message}, exc.status_code)
+
+
+class ApiWindowResume:
+    async def on_post(self, req, resp, window_id):
+        try:
+            require_user(req)
+            body = await req.get_media() or {}
+            holder = str(body.get("holder") or "仓管")
+            _json(resp, {"detail": resume_window(int(window_id), holder=holder)})
+        except ServiceError as exc:
+            _json(resp, {"error": exc.message}, exc.status_code)
+
+
+class ApiArmFailure:
+    async def on_post(self, req, resp, window_id):
+        try:
+            require_user(req)
+            body = await req.get_media() or {}
+            slice_id = int(body.get("slice_id"))
+            _json(resp, arm_failure(int(window_id), slice_id))
+        except ServiceError as exc:
+            _json(resp, {"error": exc.message}, exc.status_code)
+        except (TypeError, ValueError):
+            _json(resp, {"error": "slice_id 无效"}, 400)
+
+
 class ApiReplay:
     async def on_post(self, req, resp, slice_id):
         try:
@@ -175,6 +223,10 @@ def create_app() -> falcon.asgi.App:
     app.add_route("/api/windows", ApiWindows())
     app.add_route("/api/windows/{window_id:int}/plan", ApiPlan())
     app.add_route("/api/windows/{window_id:int}/slices", ApiSlices())
+    app.add_route("/api/windows/{window_id:int}/detail", ApiWindowDetail())
+    app.add_route("/api/windows/{window_id:int}/replay", ApiWindowReplay())
+    app.add_route("/api/windows/{window_id:int}/resume", ApiWindowResume())
+    app.add_route("/api/windows/{window_id:int}/arm-failure", ApiArmFailure())
     app.add_route("/api/slices/{slice_id:int}/replay", ApiReplay())
     app.add_route("/api/coverage-reports", ApiCoverage())
     app.add_static_route("/static", str(STATIC))
